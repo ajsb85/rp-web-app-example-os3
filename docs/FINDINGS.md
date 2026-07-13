@@ -197,6 +197,72 @@ mmcblk0     7.5G
 
 i.e. the root partition already spans essentially the full remaining card capacity — no manual resize was necessary.
 
+## 8. Deploy directory name must match the app's hardcoded `app_id`
+
+After a successful build, the app appeared in the web UI's application list ("Example") and its static assets (HTML/CSS/JS) loaded fine from `/opt/redpitaya/www/apps/web_example/`. But launching it produced a repeating client-side error:
+
+```
+Can not load application. Error: -1
+```
+
+`GET /bazaar?start=example` (called by the frontend to launch the backend) returned:
+
+```json
+{"status":"ERROR","reason":"Can not load application. Error: -1"}
+```
+
+`/var/log/redpitaya_debug.log` showed why — nginx's Red Pitaya "bazaar" module was looking in the wrong directory entirely:
+
+```
+sh: 1: /opt/redpitaya/www/apps/example/fpga.sh: not found
+[rp_bazaar_start] Problem running /opt/redpitaya/www/apps/example/fpga.sh
+Loading application: '/opt/redpitaya/www/apps/example/controllerhf.so'
+rp_bazaar_app_load_module: '/opt/redpitaya/www/apps/example/controllerhf.so'
+Application arg_start failed: -1
+```
+
+The app was deployed at `.../apps/web_example/`, not `.../apps/example/`. The reason: `js/sm.js` hardcodes the app's identity independently of whatever directory it's deployed into:
+
+```js
+SM.config.app_id = 'example';
+```
+
+The frontend's launch request (`/bazaar?start=<app_id>`) uses this `app_id`, and the "bazaar" nginx module resolves the app directory from that same id — **not** from the URL path the static files happen to be served from. Deploying under a differently-named folder (`web_example`) desyncs the two: static assets load fine (nginx serves whatever directory matches the URL), but the backend launcher looks in `.../apps/example/` regardless, doesn't find `fpga.sh`/`controllerhf.so` there, and fails. This also intermittently crashed an nginx worker (`worker process NNNN exited on signal 11` in `/var/log/redpitaya_error.log`) while repeatedly hitting the failed load path.
+
+**Fix:** deploy under the directory name that matches `app_id` — in this case, rename the deployed folder to `example` (matching both `sm.js` and the original example's own `readme.md`, which documents `mkdir /opt/redpitaya/www/apps/example`):
+
+```sh
+mount -o remount,rw /opt/redpitaya
+mv /opt/redpitaya/www/apps/web_example /opt/redpitaya/www/apps/example
+mount -o remount,ro /opt/redpitaya
+```
+
+After the rename, `/var/log/redpitaya_debug.log` showed a clean load:
+
+```
+Loading application: '/opt/redpitaya/www/apps/example/controllerhf.so' [DONE]
+Application loaded succesfully!
+Starting WS-server
+start_ws_server()
+Running...[DONE]
+```
+
+## 9. Live UI verification
+
+With the directory naming fixed, the app was exercised end-to-end in a browser against `http://192.168.68.108/example/?type=run`:
+
+- App tile "Example" appears in the main application list and launches correctly.
+- The WebSocket connection opens (`Socket opened` in the browser console) and the backend reports `Running...[DONE]`.
+- Typing into the `TEXT` and `NUMBER` fields and clicking `PRESS` round-trips the values through `controllerhf.so` and back to the UI correctly (verified `TEXT: hello redpitaya`, `NUMBER: 42` persisted after submit).
+
+One cosmetic, non-blocking issue observed: the browser console repeatedly logs `incorrect header check` (`console.log`, not `console.error`). This comes from `js/sm.js`:
+
+```js
+var inflate = pako.inflate(data);
+```
+
+`sm.js` unconditionally attempts to zlib-inflate every incoming WebSocket frame. When the backend sends a frame that isn't actually deflate-compressed, `pako.inflate` throws; the example's own code catches this and just logs it, falling back gracefully, so no functionality is lost — the fields still update correctly. Not fixed here since it's pre-existing behavior in the stock example's protocol handling and doesn't affect correctness, but worth knowing about if you extend this example and see this in your own console.
+
 ## Summary of fixes applied
 
 | Issue | File | Fix |
@@ -206,3 +272,4 @@ i.e. the root partition already spans essentially the full remaining card capaci
 | `/opt/redpitaya` read-only | (deploy step) | `mount -o remount,rw /opt/redpitaya` before deploying/building, remount `ro` after |
 | `scp` SFTP failure | (deploy step) | Use `scp -O` (legacy protocol) |
 | OOM during compile | (build step) | Temporary 512 MB swapfile during `make` |
+| Backend fails to launch (`Error: -1`) | (deploy step) | Deploy under a directory name matching `sm.js`'s `app_id` (`example`), not an arbitrary name |
