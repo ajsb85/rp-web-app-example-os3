@@ -84,4 +84,4 @@ Default SSH/web login for an unconfigured board: `root` / `root`. Per Red Pitaya
 
 ## License
 
-No license has been chosen for this repository yet.
+MIT — see [`LICENSE`](LICENSE). Note that `app/` originated as Red Pitaya's own [Complete Web App Example](https://downloads.redpitaya.com/doc/Examples/RP_WEB_app_example_2.0.zip), which ships with no license of its own; this repo's MIT license applies to the patches, fixes, documentation, and tooling added here on top of it.
