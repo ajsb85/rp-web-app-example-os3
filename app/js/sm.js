@@ -199,6 +199,10 @@
             }
             console.log("SIGNAL SUM1 = " + sig_sum_1 + "; SIGNAL SUM2 = " + sig_sum_2);
 
+            if (window.Scope && typeof Scope.render === 'function') {
+                Scope.render(sig_1.value, sig_2.value, sig_sum_1, sig_sum_2);
+            }
+
             SM.signalStack.splice(0, 1);
         }
         if (SM.signalStack.length > 2)

@@ -36,6 +36,10 @@ CONTRIBUTING.md   How to contribute
 
 Full detail, including the exact compiler errors and raw WebSocket frame bytes, is in [`docs/FINDINGS.md`](docs/FINDINGS.md). The app has been verified working end-to-end in-browser: launches, connects over WebSocket, round-trips `TEXT`/`NUMBER`/`BOOL` parameters, and streams the signal-array demo correctly — with a clean console.
 
+## Added: live oscilloscope-style signal viewer
+
+`app/js/scope.js` is a new addition (not part of the stock example) that renders the `SS_SIGNAL_1`/`SS_SIGNAL_2` random-array demo as two live, auto-scaled traces on a `<canvas>`, refreshed at the same ~25 fps rate the backend already sends signal updates at, instead of just summing them to the console. See [`docs/FINDINGS.md`](docs/FINDINGS.md#12-added-feature-live-oscilloscope-style-signal-viewer).
+
 ## Build
 
 Building on-device requires temporary swap — the board's 206 MiB of RAM is not enough for the compiler to get through the C++20 STL headers (`cc1plus` gets OOM-killed otherwise). See [`docs/FINDINGS.md`](docs/FINDINGS.md#6-out-of-memory-during-compilation) for the full explanation.

@@ -31,6 +31,7 @@
     <script src="../assets/pako.js"></script>
     <script src="js/help-sm.js"></script>
     <script src="js/guiHandler.js"></script>
+    <script src="js/scope.js"></script>
     <script src="js/sm.js"></script>
 </head>
 
@@ -98,6 +99,16 @@
                                             <a href="#" id="a_run" style="">PRESS</a>
                                         </li>
                                     </div>
+                                </div>
+
+                                <div style="margin-top: 20px;">
+                                    <canvas id="scope-canvas" width="760" height="260" style="border: 1px solid #444;"></canvas>
+                                    <div id="scope-legend" style="margin-top: 6px;">
+                                        <span style="color: #3ea6ff;">&#9632;</span> SS_SIGNAL_1
+                                        &nbsp;&nbsp;
+                                        <span style="color: #ffb100;">&#9632;</span> SS_SIGNAL_2
+                                    </div>
+                                    <div id="scope-readout" style="margin-top: 4px; color: #999; font-family: monospace;"></div>
                                 </div>
                             </div>
                         </div>

@@ -310,6 +310,20 @@ with zero console errors.
 
 `index.html` includes `<script src="js/analytics-main.js"></script>`, but that file isn't part of the downloaded example zip at all — a packaging gap in the official archive. Harmless (a 404 the browser ignores), but noisy in the network log. Removed the `<script>` tag in `app/index.html` since the file was never shipped and nothing in the app depends on it.
 
+## 12. Added feature: live oscilloscope-style signal viewer
+
+With signal decoding actually working (§10), the stock example's handling of `SS_SIGNAL_1`/`SS_SIGNAL_2` was still just a running sum printed to `console.log` — the array data was received but never visualized, despite "array data transmission" being one of the example's two advertised demo features.
+
+Added `app/js/scope.js`, a small self-contained renderer wired into `sm.js`'s existing `signalsHandler` (which already runs on a 40 ms interval, i.e. ~25 fps):
+
+```js
+if (window.Scope && typeof Scope.render === 'function') {
+    Scope.render(sig_1.value, sig_2.value, sig_sum_1, sig_sum_2);
+}
+```
+
+It draws both signal arrays onto a `<canvas>` as oscilloscope-style traces, plus a text readout of the running sums. One issue surfaced immediately when first tested: `SS_SIGNAL_1` values are in roughly `[0, 1]` but `SS_SIGNAL_2` values are in roughly `[1, 2]` (visible from the sums: `sum2 - sum1 ≈ 1000` over a 1000-sample array) — a single fixed `[0,1]` → canvas-height mapping left `SS_SIGNAL_2` rendering entirely off the top of the canvas. Fixed by computing the actual min/max across both arrays each frame and auto-scaling to that range (with a small margin), rather than assuming a fixed range.
+
 ## Summary of fixes applied
 
 | Issue | File | Fix |
@@ -322,6 +336,7 @@ with zero console errors.
 | Backend fails to launch (`Error: -1`) | (deploy step) | Deploy under a directory name matching `sm.js`'s `app_id` (`example`), not an arbitrary name |
 | Signal messages silently dropped (`incorrect header check`) | `app/js/sm.js` | Strip the 4-byte `EZIA` magic prefix before `pako.inflate()` on fallback |
 | Dangling 404 on `analytics-main.js` | `app/index.html` | Removed the unused `<script>` tag |
+| Signal data received but never visualized | `app/js/scope.js` (new) | Added a live, auto-scaled oscilloscope-style canvas renderer |
 
 ## Scope note
 
