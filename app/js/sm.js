@@ -121,8 +121,17 @@
             SM.ws.onmessage = function(ev) {
                 try {
                     var data = new Uint8Array(ev.data);
-                    var inflate = pako.inflate(data);
-                    var text = String.fromCharCode.apply(null, new Uint8Array(inflate));
+                    var text;
+                    try {
+                        text = String.fromCharCode.apply(null, pako.inflate(data));
+                    } catch (plainErr) {
+                        // Signal payloads (e.g. SS_SIGNAL_1) are framed with a 4-byte
+                        // ASCII magic prefix ("EZIA") before the actual gzip body -
+                        // pako.inflate() on the raw frame fails on that prefix with
+                        // "incorrect header check". Parameter-only updates aren't
+                        // framed this way, so try the offset only as a fallback.
+                        text = String.fromCharCode.apply(null, pako.inflate(data.slice(4)));
+                    }
                     var receive = JSON.parse(text);
 
                     //Recieving parameters

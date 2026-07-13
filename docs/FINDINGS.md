@@ -255,13 +255,60 @@ With the directory naming fixed, the app was exercised end-to-end in a browser a
 - The WebSocket connection opens (`Socket opened` in the browser console) and the backend reports `Running...[DONE]`.
 - Typing into the `TEXT` and `NUMBER` fields and clicking `PRESS` round-trips the values through `controllerhf.so` and back to the UI correctly (verified `TEXT: hello redpitaya`, `NUMBER: 42` persisted after submit).
 
-One cosmetic, non-blocking issue observed: the browser console repeatedly logs `incorrect header check` (`console.log`, not `console.error`). This comes from `js/sm.js`:
+A screenshot of the working app is in [`docs/screenshot-example-app.png`](screenshot-example-app.png).
+
+## 10. `pako.inflate()` "incorrect header check" — signal messages were being silently dropped
+
+One issue initially looked cosmetic but wasn't: the browser console repeatedly logged `incorrect header check` at `console.log` level (not `console.error`), from `js/sm.js`'s WebSocket message handler:
 
 ```js
 var inflate = pako.inflate(data);
 ```
 
-`sm.js` unconditionally attempts to zlib-inflate every incoming WebSocket frame. When the backend sends a frame that isn't actually deflate-compressed, `pako.inflate` throws; the example's own code catches this and just logs it, falling back gracefully, so no functionality is lost — the fields still update correctly. Not fixed here since it's pre-existing behavior in the stock example's protocol handling and doesn't affect correctness, but worth knowing about if you extend this example and see this in your own console.
+The first hypothesis — that some backend messages simply aren't compressed — was wrong, and worth recording as a wrong turn: falling back to treating the raw bytes as plain text just produced a *different* error (`SyntaxError: Unexpected token 'E', "EZIA   "... is not valid JSON`), so the frames were clearly still binary/compressed, just not in a format `pako.inflate()` recognized.
+
+Capturing a raw failing frame in the browser (via `evaluate_script`, dumping the first bytes as hex) showed the actual structure:
+
+```
+45 5a 49 41 1f 8b 08 00 00 00 00 00 04 03 ...
+E  Z  I  A  <-- gzip magic (1f 8b) + deflate method (08) starts here
+```
+
+Every failing frame starts with a 4-byte ASCII magic prefix, `"EZIA"`, followed by a standard gzip stream. `pako.inflate()` was choking on the `EZIA` bytes themselves, not on anything past them. Stripping the first 4 bytes before inflating decodes it correctly — confirmed by inspecting the decoded payload directly:
+
+```json
+{"signals":{"SS_SIGNAL_1":{"size":1000,"value":[0.7,0.3,0.1,0.5,0.9,...
+```
+
+These are the `SS_SIGNAL_1`/`SS_SIGNAL_2` random-array messages — the "array data transmission" feature the example is specifically meant to demonstrate. Because every one of these messages was silently dropped (caught, logged, discarded), **this headline feature of the example was completely non-functional** until this was found, not just noisy.
+
+**Fix applied in `app/js/sm.js`:** try `pako.inflate()` on the raw frame first (parameter-only updates aren't prefixed and decode fine as-is); on failure, retry after skipping the 4-byte `EZIA` prefix:
+
+```js
+try {
+    text = String.fromCharCode.apply(null, pako.inflate(data));
+} catch (plainErr) {
+    // Signal payloads (e.g. SS_SIGNAL_1) are framed with a 4-byte ASCII magic
+    // prefix ("EZIA") before the actual gzip body - pako.inflate() on the raw
+    // frame fails on that prefix with "incorrect header check". Parameter-only
+    // updates aren't framed this way, so try the offset only as a fallback.
+    text = String.fromCharCode.apply(null, pako.inflate(data.slice(4)));
+}
+```
+
+After this fix, the console shows the signal data actually being processed (`guiHandler.js` computing running sums over the received arrays):
+
+```
+SIGNAL SUM1 = 553.1; SIGNAL SUM2 = 1553.1000000000004
+SIGNAL SUM1 = 563.4999999999995; SIGNAL SUM2 = 1563.5000000000011
+...
+```
+
+with zero console errors.
+
+## 11. Dangling `analytics-main.js` reference
+
+`index.html` includes `<script src="js/analytics-main.js"></script>`, but that file isn't part of the downloaded example zip at all — a packaging gap in the official archive. Harmless (a 404 the browser ignores), but noisy in the network log. Removed the `<script>` tag in `app/index.html` since the file was never shipped and nothing in the app depends on it.
 
 ## Summary of fixes applied
 
@@ -273,3 +320,9 @@ var inflate = pako.inflate(data);
 | `scp` SFTP failure | (deploy step) | Use `scp -O` (legacy protocol) |
 | OOM during compile | (build step) | Temporary 512 MB swapfile during `make` |
 | Backend fails to launch (`Error: -1`) | (deploy step) | Deploy under a directory name matching `sm.js`'s `app_id` (`example`), not an arbitrary name |
+| Signal messages silently dropped (`incorrect header check`) | `app/js/sm.js` | Strip the 4-byte `EZIA` magic prefix before `pako.inflate()` on fallback |
+| Dangling 404 on `analytics-main.js` | `app/index.html` | Removed the unused `<script>` tag |
+
+## Scope note
+
+This repo documents everything above for anyone else hitting the same issues, but the fixes/findings have **not** been filed as an upstream issue against Red Pitaya's example or SDK — this is intentionally kept as local documentation for now.

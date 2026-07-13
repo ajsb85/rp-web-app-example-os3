@@ -2,7 +2,9 @@
 
 A working port of Red Pitaya's [Complete Web App Example](https://downloads.redpitaya.com/doc/Examples/RP_WEB_app_example_2.0.zip) (originally written against the OS 2.0 SDK) to **Red Pitaya OS 3.00-57**, running on a **STEMlab 125-10 (V1r1)**.
 
-The stock example fails to compile as-is against the OS 3.00 SDK. This repo contains the patched, building source, plus a full write-up of why it broke and how each issue was diagnosed and fixed — see [`docs/FINDINGS.md`](docs/FINDINGS.md).
+The stock example fails to compile as-is against the OS 3.00 SDK, and even once it builds and deploys, one of its headline features (the "array data transmission" signal demo) silently doesn't work. This repo contains the patched, fully-working source, plus a full write-up of every issue hit and how each was diagnosed and fixed — see [`docs/FINDINGS.md`](docs/FINDINGS.md).
+
+![Working example app](docs/screenshot-example-app.png)
 
 ## Hardware / software under test
 
@@ -29,8 +31,10 @@ CONTRIBUTING.md   How to contribute
 1. `src/Makefile`: `-std=c++11` → `-std=c++20` (the OS 3.00 SDK headers require `if constexpr`, `std::is_same_v`, and `std::span`).
 2. `src/main.cpp`: removed the `extern "C" { #include "rpApp.h" }` wrapper — `rpApp.h` now transitively pulls in `<functional>`/`<vector>`, and C++ templates cannot have C linkage.
 3. Deploy directory must be named `example` (matching `js/sm.js`'s hardcoded `app_id`), not an arbitrary name — otherwise the app UI loads but fails to launch with `Error: -1`.
+4. `js/sm.js`: signal messages (the array/random-number demo) are framed with a 4-byte `"EZIA"` magic prefix before a gzip body; `pako.inflate()` on the raw frame fails and the message is silently dropped. Fixed by retrying after skipping the 4-byte prefix — this feature was completely non-functional before the fix, not just noisy.
+5. `index.html`: removed a `<script src="js/analytics-main.js">` reference to a file that was never included in the official zip (harmless 404).
 
-Full detail, including the exact compiler errors, is in [`docs/FINDINGS.md`](docs/FINDINGS.md). The app has been verified working end-to-end in-browser: launches, connects over WebSocket, and round-trips `TEXT`/`NUMBER`/`BOOL` parameters through the compiled backend correctly.
+Full detail, including the exact compiler errors and raw WebSocket frame bytes, is in [`docs/FINDINGS.md`](docs/FINDINGS.md). The app has been verified working end-to-end in-browser: launches, connects over WebSocket, round-trips `TEXT`/`NUMBER`/`BOOL` parameters, and streams the signal-array demo correctly — with a clean console.
 
 ## Build
 
